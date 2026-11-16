@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bild-Teiler</title>
+<meta name="theme-color" content="#0f6f7a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bild-Teiler">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-180.png">
+
+<style>
+/* Layout: Werkzeugleiste oben; darunter links der Ordner mit allen hochgeladenen Bildern, rechts die zoombare Arbeitsfläche mit Karten und Kästen. */
+:root{
+  --bg:#e8ecef;
+  --board:#dde3e8;
+  --panel:#ffffff;
+  --ink:#1a2430;
+  --muted:#5d6b78;
+  --line:#c9d2da;
+  --accent:#0f6f7a;
+  --accent-ink:#ffffff;
+  --sel:#d5e8ea;
+  --hover:#eef2f5;
+  --dot:rgba(26,36,48,.14);
+  --shadow:0 8px 20px rgba(20,32,46,.28);
+  --font:ui-rounded,"SF Pro Rounded","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#14191e;--board:#1b2229;--panel:#242d36;--ink:#e8eef3;--muted:#9aa9b6;--line:#3a4753;
+    --accent:#4fb3bf;--accent-ink:#06242a;--sel:#2b4249;--hover:#2d3843;--dot:rgba(232,238,243,.12);--shadow:0 8px 20px rgba(0,0,0,.55);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14191e;--board:#1b2229;--panel:#242d36;--ink:#e8eef3;--muted:#9aa9b6;--line:#3a4753;
+  --accent:#4fb3bf;--accent-ink:#06242a;--sel:#2b4249;--hover:#2d3843;--dot:rgba(232,238,243,.12);--shadow:0 8px 20px rgba(0,0,0,.55);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+html{touch-action:manipulation}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;display:flex;flex-direction:column;overflow:hidden}
+
+/* Werkzeugleiste */
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.group{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
+.title{font-weight:700;font-size:17px;letter-spacing:.01em;margin-right:4px}
+button,select,input{font:inherit;color:inherit}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:8px 13px;cursor:pointer;min-height:38px}
+.btn:hover{border-color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn[aria-pressed="true"]{background:var(--sel);border-color:var(--accent)}
+.btn.warn{border-color:#b3261e;color:#b3261e}
+.btn:focus-visible,.card:focus-visible,input:focus-visible,select:focus-visible,#libList li:focus-visible,.rm:focus-visible,.fbtn:focus-visible,.cbtn:focus-visible,.ftitle:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+label.field{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px}
+label.field input[type=range]{width:130px;accent-color:var(--accent)}
+label.field select{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 8px;min-height:34px}
+.sr{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
+label.btn{display:inline-flex;align-items:center}
+.hint{margin-left:auto;color:var(--muted);font-size:13px}
+
+/* Arbeitsbereich: Ordner + Fläche */
+.work{flex:1;min-height:0;display:flex;position:relative}
+
+#lib{width:264px;flex:none;display:flex;flex-direction:column;background:var(--panel);border-right:1px solid var(--line)}
+#lib[hidden]{display:none}
+#lib .head{padding:12px 12px 10px;border-bottom:1px solid var(--line)}
+#lib h2{margin:0 0 8px;font-size:14px;font-weight:700}
+#lib h2 span{color:var(--muted);font-weight:500}
+#filter{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 10px;min-height:34px}
+#libList{list-style:none;margin:0;padding:6px;overflow:auto;flex:1}
+#libList li{display:flex;align-items:center;gap:8px;padding:9px 8px 9px 10px;border-radius:8px;cursor:default;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+#libList li:hover{background:var(--hover)}
+#libList li.sel{background:var(--sel)}
+#libList .dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--accent);opacity:0}
+#libList li.onboard .dot{opacity:1}
+#libList .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#libList .rm{flex:none;border:1px solid transparent;background:transparent;border-radius:7px;padding:3px 8px;font-size:12px;color:var(--muted);cursor:pointer;opacity:0}
+#libList li:hover .rm,#libList li:focus-within .rm,#libList .rm.armed{opacity:1}
+#libList .rm:hover,#libList .rm.armed{border-color:var(--line);color:var(--ink)}
+#libList .rm.armed{background:var(--panel);color:#b3261e;border-color:#b3261e}
+@media (hover:none){#libList .rm{opacity:.85}}
+#libList .none{padding:14px 10px;color:var(--muted);font-size:14px;cursor:default}
+#lib .foot{padding:9px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);line-height:1.5}
+#lib .foot i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:5px}
+
+/* Fläche: feste Sichtfläche, darin die frei verschiebbare und zoombare Welt */
+#board{position:relative;flex:1;min-width:0;overflow:hidden;background-color:var(--board);
+  background-image:radial-gradient(var(--dot) 1.4px,transparent 1.6px);background-size:26px 26px;
+  cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+#board.panning{cursor:grabbing}
+#world{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0;--z:1;--k:clamp(1,calc(1 / var(--z)),2.4)}
+#frames,#cards,#ctl{position:absolute;left:0;top:0;width:0;height:0}
+#frames{z-index:0;pointer-events:none}
+#cards{z-index:1}
+#ctl{z-index:2;pointer-events:none}
+.fctl{position:absolute;pointer-events:none}
+#world.anim{transition:transform .45s cubic-bezier(.3,.1,.2,1)}
+#board.anim{transition:background-position .45s cubic-bezier(.3,.1,.2,1),background-size .45s cubic-bezier(.3,.1,.2,1)}
+
+#empty{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:14px;text-align:center;padding:24px;color:var(--muted);pointer-events:none}
+#empty strong{display:block;color:var(--ink);font-size:20px;margin-bottom:4px}
+#empty .btn{pointer-events:auto}
+#board.over{outline:3px dashed var(--accent);outline-offset:-10px}
+
+/* Zoomleiste */
+#zoombar{position:absolute;right:14px;bottom:14px;z-index:30;display:flex;align-items:center;gap:2px;padding:4px;background:var(--panel);border:1px solid var(--line);border-radius:11px;box-shadow:var(--shadow);cursor:default}
+#zoombar button{border:0;background:transparent;border-radius:8px;min-width:36px;min-height:36px;padding:0 10px;cursor:pointer}
+#zoombar button:hover:not(:disabled){background:var(--hover)}
+#zoombar button:disabled{opacity:.4;cursor:default}
+#zoombar button:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+#zoombar .pct{min-width:62px;font-variant-numeric:tabular-nums;font-size:14px}
+#zoombar .sep{width:1px;align-self:stretch;background:var(--line);margin:4px 3px}
+
+/* Farbauswahl */
+#colorpop{position:absolute;z-index:35;display:grid;grid-template-columns:repeat(3,38px);gap:10px;padding:12px 14px 14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);cursor:default}
+#colorpop[hidden]{display:none}
+#colorpop .ttl{grid-column:1 / -1;font-size:13px;color:var(--muted);margin:0 0 2px}
+.swatch{position:relative;width:38px;height:38px;padding:0;border-radius:50%;border:3px solid var(--panel);background:var(--sc);box-shadow:0 0 0 1px var(--line);cursor:pointer}
+.swatch:hover{transform:scale(1.08)}
+.swatch.on{box-shadow:0 0 0 3px var(--ink)}
+.swatch:focus-visible,.swatch.custom:focus-within{outline:3px solid var(--accent);outline-offset:2px}
+.swatch.custom{background:conic-gradient(#e11d48,#f59e0b,#84cc16,#06b6d4,#6366f1,#d946ef,#e11d48);overflow:hidden}
+.swatch.custom input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+
+/* Kasten */
+.card.tidy{transition:left .3s ease,top .3s ease}
+.frame,.fctl{transition:none}
+.frame.grow,.fctl.grow{transition:left .28s ease,top .28s ease,width .28s ease,height .28s ease}
+.frame{position:absolute;pointer-events:none;border:calc(3px * var(--k)) dashed var(--gc);border-radius:16px;
+  background:color-mix(in srgb,var(--gc) 8%,transparent);transition:background-color .15s,box-shadow .15s}
+.frame.drop{background:color-mix(in srgb,var(--gc) 20%,transparent);box-shadow:0 0 0 6px color-mix(in srgb,var(--gc) 35%,transparent)}
+.fhead{position:absolute;left:0;right:0;top:0;height:calc(44px * var(--k));display:flex;align-items:center;gap:calc(6px * var(--k));padding:0 calc(8px * var(--k)) 0 calc(14px * var(--k));
+  pointer-events:auto;cursor:grab;touch-action:none;border-radius:15px 15px 0 0;background:color-mix(in srgb,var(--gc) 26%,var(--board))}
+.fhead:active{cursor:grabbing}
+.ftitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;font-size:calc(17px * var(--k));color:var(--ink);padding:2px 4px;border-radius:6px;cursor:inherit}
+.ftitle[contenteditable="true"]{cursor:text;text-overflow:clip;background:var(--panel);user-select:text;-webkit-user-select:text;outline:2px solid var(--gc)}
+.fbtn{flex:none;width:calc(30px * var(--k));height:calc(30px * var(--k));border-radius:50%;border:1px solid transparent;background:transparent;color:var(--ink);cursor:pointer;display:grid;place-items:center;font-size:calc(14px * var(--k));line-height:1;opacity:.75}
+.fbtn:hover{opacity:1;background:var(--panel);border-color:var(--line)}
+.fbtn .sw{width:calc(16px * var(--k));height:calc(16px * var(--k));border-radius:50%;background:var(--gc);border:2px solid var(--panel);box-shadow:0 0 0 1px var(--gc)}
+.fres{position:absolute;right:calc(-3px * var(--k));bottom:calc(-3px * var(--k));width:calc(30px * var(--k));height:calc(30px * var(--k));pointer-events:auto;cursor:nwse-resize;touch-action:none;
+  background:linear-gradient(135deg,transparent 52%,var(--gc) 52%);border-bottom-right-radius:16px;opacity:.85}
+
+/* Karte = eine Bildhälfte. Beim Tippen dreht sie sich am selben Ort um ihre senkrechte Mittelachse; auf der Rückseite steht die andere Hälfte. */
+.card{position:absolute;width:calc(var(--w) / 2);height:var(--h);perspective:1400px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:6px}
+.card.dragging{cursor:grabbing}
+.card.pulse{animation:pulse 1s ease-out}
+@keyframes pulse{0%{outline:0 solid var(--accent);outline-offset:2px}30%{outline:6px solid var(--accent);outline-offset:4px}100%{outline:0 solid transparent;outline-offset:8px}}
+.leaf{position:absolute;inset:0;transform-style:preserve-3d;transform:rotateY(0deg);transform-origin:center center;transition:transform .9s cubic-bezier(.45,.1,.2,1)}
+.face{position:absolute;inset:0;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden;
+  background-image:var(--img);background-size:var(--w) var(--h);background-repeat:no-repeat;background-color:#fff;box-shadow:var(--shadow)}
+.back{transform:rotateY(180deg)}
+
+/* Vorderseite rechts (Standard): sichtbar ist die rechte Hälfte, die Rückseite zeigt die linke */
+.fr .front{background-position:calc(var(--w) / -2) 0;border-radius:0 6px 6px 0}
+.fr .back{background-position:0 0;border-radius:6px 0 0 6px}
+.fr.flipped .leaf{transform:rotateY(-180deg)}
+/* Vorderseite links: sichtbar ist die linke Hälfte, die Rückseite zeigt die rechte */
+.fl .front{background-position:0 0;border-radius:6px 0 0 6px}
+.fl .back{background-position:calc(var(--w) / -2) 0;border-radius:0 6px 6px 0}
+.fl.flipped .leaf{transform:rotateY(180deg)}
+
+/* Knöpfe an der Karte; beim Herauszoomen wachsen sie mit, damit sie bedienbar bleiben */
+.cbtn{position:absolute;top:-13px;z-index:5;width:30px;height:30px;border-radius:50%;border:1px solid var(--line);
+  background:var(--panel);color:var(--ink);cursor:pointer;line-height:1;font-size:14px;display:grid;place-items:center;opacity:0;transition:opacity .15s;
+  transform:scale(clamp(1,calc(1 / var(--z)),2.4))}
+.cbtn.del{right:-13px;transform-origin:center}
+.cbtn.zoomc{left:-13px}
+.cbtn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round}
+.card:hover .cbtn,.card:focus-within .cbtn,.card:focus .cbtn,.card.zoomedc .cbtn.zoomc{opacity:1}
+.card.zoomedc .cbtn.zoomc{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+@media (hover:none){.cbtn{opacity:.92}}
+
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);max-width:min(92vw,560px);background:var(--ink);color:var(--bg);
+  padding:12px 16px;border-radius:10px;font-size:14px;line-height:1.4;box-shadow:var(--shadow);display:none;z-index:9999}
+
+@media (prefers-reduced-motion:reduce){.leaf{transition-duration:.01s}.card.pulse{animation:none}#world.anim,#board.anim{transition:none}}
+@media (max-width:760px){
+  .hint{display:none}
+  #lib{position:absolute;z-index:40;top:0;bottom:0;left:0;box-shadow:var(--shadow)}
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <span class="title">Bild-Teiler</span>
+  <div class="group">
+    <label class="btn primary" id="addBtn" for="file" tabindex="0" role="button">Bild hinzufügen</label>
+    <button class="btn" id="frameBtn" type="button">Kasten anlegen</button>
+    <button class="btn" id="flipAll" type="button">Alle umdrehen</button>
+    <button class="btn" id="clearBtn" type="button">Fläche leeren</button>
+    <button class="btn" id="libBtn" type="button" aria-pressed="true" aria-controls="lib">Ordner</button>
+    <input id="file" class="sr" type="file" accept="image/*" multiple>
+  </div>
+  <div class="group">
+    <label class="field" for="size">Größe <input id="size" type="range" min="160" max="900" step="10" value="420"></label>
+    <label class="field" for="front">Vorderseite
+      <select id="front">
+        <option value="right">rechte Hälfte</option>
+        <option value="left">linke Hälfte</option>
+      </select>
+    </label>
+  </div>
+  <span class="hint">Tippen: umdrehen · Ziehen: verschieben · Strg/Cmd + Scrollen oder Pinch: zoomen</span>
+</header>
+
+<div class="work">
+  <aside id="lib" aria-label="Bereits hochgeladene Bilder">
+    <div class="head">
+      <h2>Bereits hochgeladene Bilder <span id="count"></span></h2>
+      <input id="filter" type="search" placeholder="Suchen" aria-label="Bilder suchen" autocomplete="off">
+    </div>
+    <ul id="libList" role="listbox" aria-label="Bilder im Ordner"></ul>
+    <div class="foot">Doppelklick legt die Karte auf die Fläche.<br><i></i>liegt auf der Fläche<br><span id="store"></span></div>
+  </aside>
+
+  <main id="board">
+    <div id="world">
+      <div id="frames"></div>
+      <div id="cards"></div>
+      <div id="ctl"></div>
+    </div>
+    <div id="empty">
+      <div><strong>Bild hierher ziehen</strong>oder einfügen (Cmd+V), auswählen oder im Ordner doppelklicken. Jedes Bild wird in der Mitte geteilt.</div>
+      <label class="btn primary" id="emptyAdd" for="file">Bild auswählen</label>
+    </div>
+    <div id="colorpop" role="dialog" aria-label="Farbe des Kastens wählen" hidden></div>
+    <div id="zoombar" role="group" aria-label="Zoom">
+      <button id="zOut" type="button" aria-label="Verkleinern" title="Verkleinern (−)">−</button>
+      <button id="zPct" class="pct" type="button" aria-label="Auf 100 % setzen" title="Auf 100 % setzen (0)">100 %</button>
+      <button id="zIn" type="button" aria-label="Vergrößern" title="Vergrößern (+)">+</button>
+      <span class="sep"></span>
+      <button id="zFit" type="button" title="Alle Karten und Kästen anzeigen">Alles zeigen</button>
+    </div>
+  </main>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  var board = document.getElementById('board');
+  var world = document.getElementById('world');
+  var framesLayer = document.getElementById('frames');
+  var cardsLayer = document.getElementById('cards');
+  var ctlLayer = document.getElementById('ctl');
+  var empty = document.getElementById('empty');
+  var fileInput = document.getElementById('file');
+  var flipAllBtn = document.getElementById('flipAll');
+  var clearBtn = document.getElementById('clearBtn');
+  var libEl = document.getElementById('lib');
+  var libList = document.getElementById('libList');
+  var libBtn = document.getElementById('libBtn');
+  var filterEl = document.getElementById('filter');
+  var zPct = document.getElementById('zPct');
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var MINZ = 0.15, MAXZ = 4;
+  var PALETTE = [
+    { c: '#0f6f7a', n: 'Türkis' }, { c: '#c2410c', n: 'Orange' }, { c: '#7c3aed', n: 'Violett' },
+    { c: '#b4234a', n: 'Rot' }, { c: '#2f7d32', n: 'Grün' }, { c: '#9a6b00', n: 'Ocker' },
+    { c: '#1d4ed8', n: 'Blau' }, { c: '#475569', n: 'Grau' }
+  ];
+  var COLORS = PALETTE.map(function(p){ return p.c; });
+
+  var state = {
+    cards: [], frames: [], lib: [], size: 420, front: 'right', z: 1, uid: 0, selected: null, persist: false,
+    view: { x: 0, y: 0, z: 1 }, pinching: false, pinchEpoch: 0, zoomed: null, prevView: null, ready: false
+  };
+  var db = null;
+
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+  function newId(){ return 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function stripExt(n){ return String(n || 'Bild').replace(/\.[^.]+$/, '') || 'Bild'; }
+
+  /* ---------- Einstellungen und Anordnung (nur Komfort, darf fehlschlagen) ---------- */
+  function saveSettings(){
+    try { localStorage.setItem('bildteiler.v1', JSON.stringify({ size: state.size, front: state.front })); } catch (e) {}
+  }
+  function loadSettings(){
+    try {
+      var s = JSON.parse(localStorage.getItem('bildteiler.v1') || 'null');
+      if (s && s.size >= 160 && s.size <= 900) state.size = s.size;
+      if (s && (s.front === 'left' || s.front === 'right')) state.front = s.front;
+    } catch (e) {}
+    document.getElementById('size').value = state.size;
+    document.getElementById('front').value = state.front;
+  }
+
+  var saveTimer = null;
+  function scheduleSave(){ clearTimeout(saveTimer); saveTimer = setTimeout(saveLayout, 350); }
+  function saveLayout(){
+    if (!state.ready) return;
+    try {
+      localStorage.setItem('bildteiler.layout.v1', JSON.stringify({
+        view: state.view,
+        frames: state.frames.map(function(f){ return { x: Math.round(f.x), y: Math.round(f.y), w: Math.round(f.w), h: Math.round(f.h), title: f.title, color: f.color }; }),
+        cards: state.cards.map(function(c){ return { libId: c.libId, x: Math.round(c.x), y: Math.round(c.y), flipped: c.flipped }; })
+      }));
+    } catch (e) {}
+  }
+  function loadLayout(){
+    try { return JSON.parse(localStorage.getItem('bildteiler.layout.v1') || 'null'); } catch (e) { return null; }
+  }
+  window.addEventListener('pagehide', saveLayout);
+
+  /* ---------- Speicher im Browser (IndexedDB) ---------- */
+  function openDb(){
+    return new Promise(function(resolve){
+      try {
+        var r = indexedDB.open('bildteiler', 1);
+        r.onupgradeneeded = function(){ r.result.createObjectStore('images', { keyPath: 'id' }); };
+        r.onsuccess = function(){ resolve(r.result); };
+        r.onerror = function(){ resolve(null); };
+        r.onblocked = function(){ resolve(null); };
+      } catch (e) { resolve(null); }
+    });
+  }
+  function dbRun(mode, fn){
+    return new Promise(function(resolve){
+      if (!db){ resolve(null); return; }
+      try {
+        var tx = db.transaction('images', mode), out = null;
+        out = fn(tx.objectStore('images'));
+        tx.oncomplete = function(){ resolve(out && 'result' in out ? out.result : true); };
+        tx.onerror = tx.onabort = function(){ resolve(null); };
+      } catch (e) { resolve(null); }
+    });
+  }
+  function dbAll(){ return dbRun('readonly', function(st){ return st.getAll(); }).then(function(r){ return Array.isArray(r) ? r : []; }); }
+  function dbPut(entry){ return dbRun('readwrite', function(st){ return st.put(entry); }); }
+  function dbDelete(id){ return dbRun('readwrite', function(st){ return st.delete(id); }); }
+
+  /* ---------- Hinweise ---------- */
+  var toastTimer = null;
+  function toast(msg){
+    var t = document.getElementById('toast');
+    t.textContent = msg; t.style.display = 'block';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ t.style.display = 'none'; }, 7000);
+  }
+
+  /* ---------- Ansicht: Verschieben und Zoomen der Fläche ---------- */
+  var animTimer = null;
+  function applyView(){
+    var v = state.view, g = 26 * v.z;
+    world.style.transform = 'translate(' + v.x + 'px,' + v.y + 'px) scale(' + v.z + ')';
+    world.style.setProperty('--z', v.z);
+    board.style.backgroundSize = g + 'px ' + g + 'px';
+    board.style.backgroundPosition = v.x + 'px ' + v.y + 'px';
+    zPct.textContent = Math.round(v.z * 100) + ' %';
+    scheduleSave();
+  }
+  function setView(nv, animate){
+    if (!colorPop.hidden) closeColorPop();
+    state.view = { x: nv.x, y: nv.y, z: clamp(nv.z, MINZ, MAXZ) };
+    clearTimeout(animTimer);
+    if (animate && !reduced){
+      world.classList.add('anim'); board.classList.add('anim');
+      animTimer = setTimeout(function(){ world.classList.remove('anim'); board.classList.remove('anim'); }, 500);
+    } else {
+      world.classList.remove('anim'); board.classList.remove('anim');
+    }
+    applyView();
+  }
+  /* Der Nutzer hat selbst gezoomt oder verschoben: Kartenzoom ist damit beendet */
+  function userView(){
+    if (state.zoomed){ state.zoomed.el.classList.remove('zoomedc'); state.zoomed = null; }
+  }
+  function zoomAt(factor, cx, cy, animate){
+    var v = state.view, nz = clamp(v.z * factor, MINZ, MAXZ), k = nz / v.z;
+    setView({ x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k, z: nz }, animate);
+  }
+  function zoomCenter(factor){ userView(); zoomAt(factor, board.clientWidth / 2, board.clientHeight / 2, true); }
+
+  function fitRect(r, pad, maxZ, animate){
+    var bw = board.clientWidth, bh = board.clientHeight;
+    var z = clamp(Math.min((bw - 2 * pad) / r.w, (bh - 2 * pad) / r.h), MINZ, Math.min(maxZ, MAXZ));
+    setView({ x: (bw - r.w * z) / 2 - r.x * z, y: (bh - r.h * z) / 2 - r.y * z, z: z }, animate);
+  }
+  function bounds(){
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    obstacles().forEach(function(o){ x0 = Math.min(x0, o.x); y0 = Math.min(y0, o.y); x1 = Math.max(x1, o.x + o.w); y1 = Math.max(y1, o.y + o.h); });
+    return x0 === Infinity ? null : { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
+  function fitAll(){
+    var b = bounds();
+    userView();
+    if (b) fitRect(b, 48, 1.5, true); else setView({ x: 0, y: 0, z: 1 }, true);
+  }
+  /* Rechteck sichtbar machen, ohne den Zoom zu ändern (nur wenn es zu groß ist, wird herausgezoomt) */
+  function reveal(r){
+    var v = state.view, bw = board.clientWidth, bh = board.clientHeight, m = 24;
+    var sx = r.x * v.z + v.x, sy = r.y * v.z + v.y, sw = r.w * v.z, sh = r.h * v.z;
+    if (sx >= m && sy >= m && sx + sw <= bw - m && sy + sh <= bh - m) return;
+    if (sw > bw - 2 * m || sh > bh - 2 * m){ fitRect(r, m * 2, v.z, true); return; }
+    setView({ x: (bw - sw) / 2 - r.x * v.z, y: (bh - sh) / 2 - r.y * v.z, z: v.z }, true);
+  }
+  function screenToWorld(cx, cy){
+    var r = board.getBoundingClientRect(), v = state.view;
+    return { x: (cx - r.left - v.x) / v.z, y: (cy - r.top - v.y) / v.z };
+  }
+
+  /* Auf eine einzelne Karte hineinzoomen; erneut auslösen stellt die vorige Ansicht wieder her */
+  function toggleZoomCard(c){
+    if (state.zoomed === c){
+      c.el.classList.remove('zoomedc');
+      state.zoomed = null;
+      if (state.prevView) setView(state.prevView, true);
+      return;
+    }
+    if (state.zoomed) state.zoomed.el.classList.remove('zoomedc');
+    else state.prevView = { x: state.view.x, y: state.view.y, z: state.view.z };
+    state.zoomed = c;
+    c.el.classList.add('zoomedc');
+    fitRect({ x: c.x, y: c.y, w: c.cw, h: c.h }, 70, MAXZ, true);
+  }
+
+  /* Mausrad / Trackpad: Strg oder Cmd (und Pinch auf dem Trackpad) zoomt, sonst wird verschoben */
+  board.addEventListener('wheel', function(e){
+    e.preventDefault();
+    userView();
+    var unit = e.deltaMode === 1 ? 16 : 1;
+    if (e.ctrlKey || e.metaKey){
+      var r = board.getBoundingClientRect();
+      var dy = clamp(e.deltaY * unit, -30, 30);
+      zoomAt(Math.exp(-dy * 0.01), e.clientX - r.left, e.clientY - r.top, false);
+    } else {
+      setView({ x: state.view.x - e.deltaX * unit, y: state.view.y - e.deltaY * unit, z: state.view.z }, false);
+    }
+  }, { passive: false });
+
+  /* Safari am Mac: Pinch kommt als Gesten-Ereignis */
+  var gz = null;
+  board.addEventListener('gesturestart', function(e){ e.preventDefault(); gz = state.view.z; });
+  board.addEventListener('gesturechange', function(e){
+    e.preventDefault();
+    if (gz === null || state.pinching) return;   /* auf dem iPad übernimmt der Zwei-Finger-Pinch unten */
+    userView();
+    var r = board.getBoundingClientRect();
+    var cx = (e.clientX !== undefined ? e.clientX - r.left : board.clientWidth / 2);
+    var cy = (e.clientY !== undefined ? e.clientY - r.top : board.clientHeight / 2);
+    zoomAt((gz * e.scale) / state.view.z, cx, cy, false);
+  });
+  board.addEventListener('gestureend', function(e){ e.preventDefault(); gz = null; });
+
+  /* Touch: Pinch mit zwei Fingern (Erfassungsphase, damit es auch über Karten und Kästen funktioniert) */
+  var tp = {}, pinch = null;
+  function tpIds(){ return Object.keys(tp); }
+  function dist(a, b){ return Math.hypot(a.x - b.x, a.y - b.y); }
+  board.addEventListener('pointerdown', function(e){
+    if (e.pointerType !== 'touch') return;
+    tp[e.pointerId] = { x: e.clientX, y: e.clientY };
+    if (tpIds().length === 2){
+      var ids = tpIds(), a = tp[ids[0]], b = tp[ids[1]];
+      pinch = { d: Math.max(1, dist(a, b)), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, v: { x: state.view.x, y: state.view.y, z: state.view.z } };
+      state.pinching = true; state.pinchEpoch++;
+      userView();
+    }
+  }, true);
+  board.addEventListener('pointermove', function(e){
+    if (!tp[e.pointerId]) return;
+    tp[e.pointerId] = { x: e.clientX, y: e.clientY };
+    if (!pinch) return;
+    var ids = tpIds(), a = tp[ids[0]], b = tp[ids[1]];
+    if (!a || !b) return;
+    var r = board.getBoundingClientRect(), nz = clamp(pinch.v.z * dist(a, b) / pinch.d, MINZ, MAXZ);
+    var wx = (pinch.mx - r.left - pinch.v.x) / pinch.v.z, wy = (pinch.my - r.top - pinch.v.y) / pinch.v.z;
+    var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    setView({ x: (mx - r.left) - wx * nz, y: (my - r.top) - wy * nz, z: nz }, false);
+  }, true);
+  function endTouch(e){
+    if (!tp[e.pointerId]) return;
+    delete tp[e.pointerId];
+    if (pinch && tpIds().length < 2){ pinch = null; state.pinching = false; }
+  }
+  board.addEventListener('pointerup', endTouch, true);
+  board.addEventListener('pointercancel', endTouch, true);
+
+  /* Fläche mit der Maus oder einem Finger verschieben (Zugriff nur auf dem Hintergrund) */
+  var pan = null;
+  board.addEventListener('pointerdown', function(e){
+    if (e.target !== board) return;
+    if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 1) return;
+    if (state.pinching) return;
+    pan = { px: e.clientX, py: e.clientY, x: state.view.x, y: state.view.y, epoch: state.pinchEpoch, moved: false };
+    board.setPointerCapture(e.pointerId);
+    document.activeElement && document.activeElement.blur && document.activeElement.blur();
+  });
+  board.addEventListener('pointermove', function(e){
+    if (!pan || state.pinching || pan.epoch !== state.pinchEpoch) return;
+    var dx = e.clientX - pan.px, dy = e.clientY - pan.py;
+    if (!pan.moved && Math.hypot(dx, dy) < 4) return;
+    if (!pan.moved){ pan.moved = true; board.classList.add('panning'); userView(); }
+    setView({ x: pan.x + dx, y: pan.y + dy, z: state.view.z }, false);
+  });
+  function endPan(e){
+    if (!pan) return;
+    pan = null;
+    board.classList.remove('panning');
+    if (board.hasPointerCapture && board.hasPointerCapture(e.pointerId)) board.releasePointerCapture(e.pointerId);
+  }
+  board.addEventListener('pointerup', endPan);
+  board.addEventListener('pointercancel', endPan);
+
+  document.getElementById('zOut').addEventListener('click', function(){ zoomCenter(1 / 1.25); });
+  document.getElementById('zIn').addEventListener('click', function(){ zoomCenter(1.25); });
+  zPct.addEventListener('click', function(){ zoomCenter(1 / state.view.z); });
+  document.getElementById('zFit').addEventListener('click', fitAll);
+
+  document.addEventListener('keydown', function(e){
+    var t = e.target;
+    if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === '+' || e.key === '='){ e.preventDefault(); zoomCenter(1.25); }
+    else if (e.key === '-' || e.key === '_'){ e.preventDefault(); zoomCenter(1 / 1.25); }
+    else if (e.key === '0'){ e.preventDefault(); zoomCenter(1 / state.view.z); }
+    else if (e.key === 'Escape' && !colorPop.hidden){ closeColorPop(); }
+    else if (e.key === 'Escape' && state.zoomed){ toggleZoomCard(state.zoomed); }
+  });
+
+  /* ---------- Kästen ---------- */
+  function frameOf(c){
+    var cx = c.x + c.cw / 2, cy = c.y + c.h / 2;
+    for (var i = state.frames.length - 1; i >= 0; i--){
+      var f = state.frames[i];
+      if (cx >= f.x && cx <= f.x + f.w && cy >= f.y && cy <= f.y + f.h) return f;
+    }
+    return null;
+  }
+  function highlightFrame(c){
+    var t = c ? frameOf(c) : null;
+    state.frames.forEach(function(f){ f.el.classList.toggle('drop', f === t); });
+  }
+  function layoutFrame(f){
+    var st = f.el.style;
+    st.left = f.x + 'px'; st.top = f.y + 'px';
+    st.width = f.w + 'px'; st.height = f.h + 'px';
+    st.setProperty('--gc', f.color);
+    var ct = f.ctl.style;
+    ct.left = f.x + 'px'; ct.top = f.y + 'px';
+    ct.width = f.w + 'px'; ct.height = f.h + 'px';
+    ct.setProperty('--gc', f.color);
+  }
+  function bringFrame(f){
+    var i = state.frames.indexOf(f);
+    if (i < 0 || i === state.frames.length - 1) return;
+    state.frames.splice(i, 1); state.frames.push(f);
+    framesLayer.appendChild(f.el);
+    ctlLayer.appendChild(f.ctl);
+  }
+  function removeFrame(f){
+    var i = state.frames.indexOf(f);
+    if (i >= 0) state.frames.splice(i, 1);
+    f.el.remove(); f.ctl.remove();
+    updateUi(); scheduleSave();
+  }
+  function editTitle(f){
+    var t = f.ctl.querySelector('.ftitle');
+    if (f.editing) return;
+    f.editing = true;
+    var before = f.title;
+    t.contentEditable = 'true';
+    t.focus();
+    try { var rg = document.createRange(); rg.selectNodeContents(t); var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rg); } catch (e) {}
+    function done(commit){
+      t.removeEventListener('blur', onBlur); t.removeEventListener('keydown', onKey);
+      f.editing = false;
+      t.contentEditable = 'false';
+      f.title = commit ? (t.textContent.trim().slice(0, 60) || 'Kasten') : before;
+      t.textContent = f.title;
+      scheduleSave();
+    }
+    function onBlur(){ done(true); }
+    function onKey(e){
+      if (e.key === 'Enter'){ e.preventDefault(); t.blur(); }
+      else if (e.key === 'Escape'){ e.preventDefault(); t.removeEventListener('blur', onBlur); done(false); t.blur(); }
+      e.stopPropagation();
+    }
+    t.addEventListener('blur', onBlur);
+    t.addEventListener('keydown', onKey);
+  }
+  function buildFrame(f){
+    var el = document.createElement('div');
+    el.className = 'frame';
+    var ctl = document.createElement('div');
+    ctl.className = 'fctl';
+    ctl.innerHTML =
+      '<div class="fhead">' +
+        '<span class="ftitle" title="Doppelklick: umbenennen"></span>' +
+        '<button class="fbtn fedit" type="button" aria-label="Kasten umbenennen" title="Umbenennen">✎</button>' +
+        '<button class="fbtn fcol" type="button" aria-label="Farbe des Kastens wechseln" title="Farbe wechseln"><span class="sw"></span></button>' +
+        '<button class="fbtn fdel" type="button" aria-label="Kasten entfernen (die Karten bleiben)" title="Kasten entfernen (Karten bleiben)">✕</button>' +
+      '</div><div class="fres" aria-hidden="true"></div>';
+    ctl.querySelector('.ftitle').textContent = f.title;
+    f.el = el; f.ctl = ctl;
+
+    var head = ctl.querySelector('.fhead'), res = ctl.querySelector('.fres');
+    ctl.querySelector('.fedit').addEventListener('click', function(){ editTitle(f); });
+    ctl.querySelector('.ftitle').addEventListener('dblclick', function(){ editTitle(f); });
+    ctl.querySelector('.fcol').addEventListener('click', function(e){
+      e.stopPropagation();
+      if (!colorPop.hidden && colorFrame === f) closeColorPop(); else openColorPop(f, e.currentTarget);
+    });
+    ctl.querySelector('.fdel').addEventListener('click', function(){ removeFrame(f); });
+
+    /* Kasten verschieben: die Karten darin wandern mit (ohne Pointer-Capture, damit der Doppelklick auf den Titel ankommt) */
+    head.addEventListener('pointerdown', function(e){
+      if (e.target.closest('.fbtn') || f.editing) return;
+      if (e.button !== undefined && e.button !== 0) return;
+      bringFrame(f);
+      var drag = { id: e.pointerId, px: e.clientX, py: e.clientY, x: f.x, y: f.y, epoch: state.pinchEpoch, moved: false,
+                   members: state.cards.filter(function(c){ return frameOf(c) === f; }).map(function(c){ return { c: c, x: c.x, y: c.y }; }) };
+      function mv(ev){
+        if (ev.pointerId !== drag.id || state.pinching || drag.epoch !== state.pinchEpoch) return;
+        if (!drag.moved && Math.hypot(ev.clientX - drag.px, ev.clientY - drag.py) < 5) return;
+        drag.moved = true;
+        var z = state.view.z, dx = (ev.clientX - drag.px) / z, dy = (ev.clientY - drag.py) / z;
+        f.x = drag.x + dx; f.y = drag.y + dy;
+        layoutFrame(f);
+        drag.members.forEach(function(m){ m.c.x = m.x + dx; m.c.y = m.y + dy; m.c.el.style.left = m.c.x + 'px'; m.c.el.style.top = m.c.y + 'px'; });
+      }
+      function up(ev){
+        if (ev.pointerId !== drag.id) return;
+        window.removeEventListener('pointermove', mv);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', up);
+        if (drag.moved) scheduleSave();
+      }
+      window.addEventListener('pointermove', mv);
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
+    });
+
+    /* Größe ändern */
+    var rs = null;
+    res.addEventListener('pointerdown', function(e){
+      if (e.button !== undefined && e.button !== 0) return;
+      bringFrame(f);
+      rs = { px: e.clientX, py: e.clientY, w: f.w, h: f.h, epoch: state.pinchEpoch };
+      res.setPointerCapture(e.pointerId);
+    });
+    res.addEventListener('pointermove', function(e){
+      if (!rs || state.pinching || rs.epoch !== state.pinchEpoch) return;
+      var z = state.view.z;
+      f.w = Math.max(200, rs.w + (e.clientX - rs.px) / z);
+      f.h = Math.max(140, rs.h + (e.clientY - rs.py) / z);
+      layoutFrame(f);
+    });
+    function endRes(e){
+      if (!rs) return;
+      rs = null;
+      if (res.hasPointerCapture && res.hasPointerCapture(e.pointerId)) res.releasePointerCapture(e.pointerId);
+      scheduleSave();
+    }
+    res.addEventListener('pointerup', endRes);
+    res.addEventListener('pointercancel', endRes);
+    return el;
+  }
+  /* Pop-up zur Farbauswahl */
+  var colorPop = document.getElementById('colorpop'), colorFrame = null;
+  function setFrameColor(f, c){ f.color = c; layoutFrame(f); scheduleSave(); markSwatches(); }
+  function markSwatches(){
+    colorPop.querySelectorAll('.swatch[data-c]').forEach(function(b){ b.classList.toggle('on', !!colorFrame && b.dataset.c === colorFrame.color); });
+  }
+  function closeColorPop(){ colorPop.hidden = true; colorFrame = null; }
+  function openColorPop(f, btn){
+    colorFrame = f;
+    colorPop.textContent = '';
+    var ttl = document.createElement('div');
+    ttl.className = 'ttl'; ttl.textContent = 'Farbe des Kastens';
+    colorPop.appendChild(ttl);
+    PALETTE.forEach(function(p){
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'swatch'; b.dataset.c = p.c; b.title = p.n; b.setAttribute('aria-label', p.n);
+      b.style.setProperty('--sc', p.c);
+      b.addEventListener('click', function(){ setFrameColor(f, p.c); closeColorPop(); });
+      colorPop.appendChild(b);
+    });
+    var cu = document.createElement('label');
+    cu.className = 'swatch custom'; cu.title = 'Eigene Farbe';
+    var inp = document.createElement('input');
+    inp.type = 'color'; inp.value = /^#[0-9a-f]{6}$/i.test(f.color) ? f.color : '#0f6f7a'; inp.setAttribute('aria-label', 'Eigene Farbe wählen');
+    inp.addEventListener('input', function(){ setFrameColor(f, inp.value); });
+    inp.addEventListener('change', closeColorPop);
+    cu.appendChild(inp);
+    colorPop.appendChild(cu);
+    markSwatches();
+    colorPop.hidden = false;
+    var br = btn.getBoundingClientRect(), r = board.getBoundingClientRect();
+    var pw = colorPop.offsetWidth, ph = colorPop.offsetHeight;
+    var left = clamp(br.left - r.left + br.width / 2 - pw / 2, 8, Math.max(8, r.width - pw - 8));
+    var top = br.bottom - r.top + 8;
+    if (top + ph > r.height - 8) top = Math.max(8, br.top - r.top - ph - 8);
+    colorPop.style.left = left + 'px'; colorPop.style.top = top + 'px';
+    var first = colorPop.querySelector('.swatch'); if (first) first.focus();
+  }
+  document.addEventListener('pointerdown', function(e){
+    if (colorPop.hidden) return;
+    if (colorPop.contains(e.target) || (e.target.closest && e.target.closest('.fcol'))) return;
+    closeColorPop();
+  }, true);
+
+  function headerH(){ return Math.round(44 * clamp(1 / state.view.z, 1, 2.4)); }
+
+  /* Liegt die Karte komplett im Kasten (unterhalb der Titelleiste)? */
+  function insideFrame(c, f){
+    return c.x >= f.x && c.x + c.cw <= f.x + f.w && c.y >= f.y + headerH() && c.y + c.h <= f.y + f.h;
+  }
+
+  /* Karte, die nur teilweise im Kasten liegt, wird neben oder unter die vorhandenen Karten gelegt.
+     Reicht der Platz nicht, wächst der Kasten in die Richtung, in der er näher an einem Quadrat bleibt. */
+  function placeInFrame(f, c, animate){
+    var pad = 24, gap = 20, hh = headerH();
+    var others = state.cards.filter(function(o){ return o !== c && frameOf(o) === f; });
+    function free(x, y){
+      return others.every(function(o){
+        return x + c.cw + gap <= o.x || o.x + o.cw + gap <= x || y + c.h + gap <= o.y || o.y + o.h + gap <= y;
+      });
+    }
+    function find(){
+      var x0 = f.x + pad, y0 = f.y + hh + pad, x1 = f.x + f.w - pad - c.cw, y1 = f.y + f.h - pad - c.h;
+      for (var y = y0; y <= y1 + 0.5; y += 10){
+        for (var x = x0; x <= x1 + 0.5; x += 10){ if (free(x, y)) return { x: x, y: y }; }
+      }
+      return null;
+    }
+    var spot = find(), grown = false, tries = 0;
+    while (!spot && tries++ < 12){
+      var right = Math.abs(Math.log((f.w + c.cw + gap) / f.h)), down = Math.abs(Math.log(f.w / (f.h + c.h + gap)));
+      if (right <= down) f.w = f.w + c.cw + gap; else f.h = f.h + c.h + gap;
+      grown = true;
+      spot = find();
+    }
+    if (!spot) return;
+    if (animate && !reduced){
+      if (grown){
+        f.el.classList.add('grow'); f.ctl.classList.add('grow');
+        clearTimeout(f.growTimer);
+        f.growTimer = setTimeout(function(){ f.el.classList.remove('grow'); f.ctl.classList.remove('grow'); }, 360);
+      }
+      c.el.classList.add('tidy');
+      clearTimeout(c.tidyTimer);
+      c.tidyTimer = setTimeout(function(){ c.el.classList.remove('tidy'); }, 360);
+    }
+    c.x = spot.x; c.y = spot.y;
+    layoutFrame(f);
+    layout(c);
+  }
+
+  /* Nach Größenänderung der Karten: Kasten so weit vergrößern, dass alle seine Karten hineinpassen */
+  function growToMembers(f){
+    var pad = 24, hh = headerH(), x0 = f.x, y0 = f.y, x1 = f.x + f.w, y1 = f.y + f.h;
+    state.cards.forEach(function(c){
+      if (frameOf(c) !== f) return;
+      x0 = Math.min(x0, c.x - pad); y0 = Math.min(y0, c.y - hh - pad);
+      x1 = Math.max(x1, c.x + c.cw + pad); y1 = Math.max(y1, c.y + c.h + pad);
+    });
+    f.x = x0; f.y = y0; f.w = x1 - x0; f.h = y1 - y0;
+    layoutFrame(f);
+  }
+
+  /* Nach dem Loslassen einer Karte: Nur wenn sie nicht komplett im Kasten liegt (aber mit der Mitte darin), wird sie einsortiert */
+  function settleCard(c){
+    var target = frameOf(c);
+    if (target && !insideFrame(c, target)) placeInFrame(target, c, true);
+  }
+
+  function addFrame(o, restore){
+    var S = state.size;
+    var f = { id: ++state.uid, x: o.x || 0, y: o.y || 0, w: o.w || Math.round(S + 60), h: o.h || Math.round(S * 0.72 + 120),
+              title: o.title || 'Kasten', color: o.color || COLORS[state.frames.length % COLORS.length], editing: false };
+    if (!restore){ var sp = findSpot(f.w, f.h, null); f.x = sp.x; f.y = sp.y; }
+    buildFrame(f);
+    framesLayer.appendChild(f.el);
+    ctlLayer.appendChild(f.ctl);
+    state.frames.push(f);
+    layoutFrame(f);
+    updateUi();
+    if (!restore){ reveal({ x: f.x, y: f.y, w: f.w, h: f.h }); scheduleSave(); }
+    return f;
+  }
+
+  /* ---------- Karten auf der Fläche ---------- */
+  function layout(c){
+    var S = state.size, ha = c.aspect / 2, hw, h;
+    if (ha >= 1){ hw = S; h = S / ha; } else { h = S; hw = S * ha; }
+    c.w = Math.max(80, Math.round(hw) * 2);   /* Breite des ganzen Bildes */
+    c.cw = c.w / 2;                            /* Breite der sichtbaren Karte */
+    c.h = Math.max(40, Math.round(h));
+    var st = c.el.style;
+    st.setProperty('--w', c.w + 'px');
+    st.setProperty('--h', c.h + 'px');
+    st.left = c.x + 'px';
+    st.top = c.y + 'px';
+  }
+
+  function applyFront(){
+    state.cards.forEach(function(c){
+      c.el.classList.toggle('fr', state.front === 'right');
+      c.el.classList.toggle('fl', state.front === 'left');
+    });
+  }
+
+  function updateUi(){
+    var anyFront = state.cards.some(function(c){ return !c.flipped; });
+    flipAllBtn.textContent = (state.cards.length && !anyFront) ? 'Alle zurückdrehen' : 'Alle umdrehen';
+    flipAllBtn.disabled = state.cards.length === 0;
+    var any = state.cards.length || state.frames.length;
+    clearBtn.disabled = !any;
+    document.getElementById('zFit').disabled = !any;
+    empty.style.display = any ? 'none' : '';
+    markLib();
+  }
+
+  function flipCard(c, to){
+    if (typeof to !== 'boolean') to = !c.flipped;
+    c.flipped = to;
+    c.el.classList.toggle('flipped', to);
+    if (!reduced){
+      var leaf = c.el.querySelector('.leaf');
+      var lift = Math.round(c.cw * 0.12);
+      if (leaf.animate){
+        try {
+          leaf.animate([{ translate: '0 0 0' }, { translate: '0 0 ' + lift + 'px', offset: 0.5 }, { translate: '0 0 0' }],
+            { duration: 900, easing: 'ease-in-out' });
+        } catch (e) { /* ältere Browser: ohne Abheben */ }
+      }
+    }
+    updateUi(); scheduleSave();
+  }
+
+  function removeCard(c){
+    var i = state.cards.indexOf(c);
+    if (i >= 0) state.cards.splice(i, 1);
+    if (state.zoomed === c){ state.zoomed = null; if (state.prevView) setView(state.prevView, true); }
+    c.el.remove();
+    updateUi(); scheduleSave();
+  }
+
+  function focusCard(c){
+    reveal({ x: c.x, y: c.y, w: c.cw, h: c.h });
+    c.el.style.zIndex = ++state.z;
+    c.el.classList.remove('pulse');
+    void c.el.offsetWidth;
+    c.el.classList.add('pulse');
+    setTimeout(function(){ c.el.classList.remove('pulse'); }, 1100);
+  }
+
+  var ZOOM_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>';
+
+  function build(c){
+    var el = document.createElement('div');
+    el.className = 'card ' + (state.front === 'right' ? 'fr' : 'fl');
+    el.tabIndex = 0;
+    el.setAttribute('role', 'button');
+    el.setAttribute('aria-label', 'Karte umdrehen: ' + c.name);
+    el.innerHTML =
+      '<div class="leaf"><div class="face front"></div><div class="face back"></div></div>' +
+      '<button class="cbtn zoomc" type="button" aria-label="Auf diese Karte zoomen" title="Auf diese Karte zoomen (Z)">' + ZOOM_ICON + '</button>' +
+      '<button class="cbtn del" type="button" aria-label="Karte von der Fläche nehmen" title="Von der Fläche nehmen">✕</button>';
+    el.style.setProperty('--img', 'url("' + c.url + '")');
+    c.el = el;
+
+    var del = el.querySelector('.del'), zoomc = el.querySelector('.zoomc');
+    [del, zoomc].forEach(function(b){ b.addEventListener('pointerdown', function(e){ e.stopPropagation(); }); });
+    del.addEventListener('click', function(e){ e.stopPropagation(); removeCard(c); });
+    zoomc.addEventListener('click', function(e){ e.stopPropagation(); toggleZoomCard(c); });
+
+    /* Ziehen und Tippen */
+    var start = null;
+    el.addEventListener('pointerdown', function(e){
+      if (e.button !== undefined && e.button !== 0) return;
+      start = { px: e.clientX, py: e.clientY, x: c.x, y: c.y, moved: false, epoch: state.pinchEpoch };
+      el.style.zIndex = ++state.z;
+      el.setPointerCapture(e.pointerId);
+    });
+    el.addEventListener('pointermove', function(e){
+      if (!start || state.pinching || start.epoch !== state.pinchEpoch) return;
+      var dx = (e.clientX - start.px) / state.view.z, dy = (e.clientY - start.py) / state.view.z;
+      if (!start.moved && Math.hypot(e.clientX - start.px, e.clientY - start.py) < 6) return;
+      if (!start.moved){ start.moved = true; el.classList.add('dragging'); }
+      c.x = start.x + dx;
+      c.y = start.y + dy;
+      el.style.left = c.x + 'px';
+      el.style.top = c.y + 'px';
+      highlightFrame(c);
+    });
+    function end(e){
+      if (!start) return;
+      var wasMoved = start.moved || start.epoch !== state.pinchEpoch;
+      start = null;
+      el.classList.remove('dragging');
+      highlightFrame(null);
+      if (el.hasPointerCapture && el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+      if (wasMoved){ settleCard(c); scheduleSave(); }
+      if (!wasMoved && e.type === 'pointerup') flipCard(c);
+    }
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+
+    /* Tastatur: Enter/Leertaste dreht, Pfeile verschieben, Z zoomt, Entf nimmt von der Fläche */
+    el.addEventListener('keydown', function(e){
+      if (e.target !== el) return;
+      var step = e.shiftKey ? 40 : 10, hit = true;
+      if (e.key === 'Enter' || e.key === ' ') flipCard(c);
+      else if (e.key === 'ArrowLeft') c.x -= step;
+      else if (e.key === 'ArrowRight') c.x += step;
+      else if (e.key === 'ArrowUp') c.y -= step;
+      else if (e.key === 'ArrowDown') c.y += step;
+      else if (e.key === 'z' || e.key === 'Z') toggleZoomCard(c);
+      else if (e.key === 'Delete' || e.key === 'Backspace') removeCard(c);
+      else hit = false;
+      if (hit){ e.preventDefault(); if (state.cards.indexOf(c) >= 0){ layout(c); settleCard(c); scheduleSave(); } }
+    });
+    return el;
+  }
+
+  /* Freien Platz suchen: zeilenweise von links oben im sichtbaren Bereich, ohne Überschneidung mit Karten und Kästen */
+  function obstacles(){
+    var o = [];
+    state.cards.forEach(function(c){ o.push({ x: c.x, y: c.y, w: c.cw, h: c.h }); });
+    state.frames.forEach(function(f){ o.push({ x: f.x, y: f.y, w: f.w, h: f.h }); });
+    return o;
+  }
+  function isFree(x, y, w, h, gap, obs){
+    return obs.every(function(o){
+      return x + w + gap <= o.x || o.x + o.w + gap <= x || y + h + gap <= o.y || o.y + o.h + gap <= y;
+    });
+  }
+  function findSpot(w, h, pref){
+    var v = state.view, gap = 18, step = 14, obs = obstacles();
+    var vx = -v.x / v.z, vy = -v.y / v.z, vw = board.clientWidth / v.z;
+    var rowW = Math.max(vw, w * 2 + gap * 3);
+    var bottom = vy;
+    obs.forEach(function(o){ bottom = Math.max(bottom, o.y + o.h); });
+    if (pref && isFree(pref.x, pref.y, w, h, gap, obs)) return { x: Math.round(pref.x), y: Math.round(pref.y) };
+    for (var y = vy + gap; y <= bottom + gap; y += step){
+      for (var x = vx + gap; x + w <= vx + rowW - gap + 0.5; x += step){
+        if (isFree(x, y, w, h, gap, obs)) return { x: Math.round(x), y: Math.round(y) };
+      }
+    }
+    return { x: Math.round(vx + gap), y: Math.round(bottom + gap) };
+  }
+
+  /* Karte aus einem Ordner-Eintrag auf die Fläche legen; raw = gespeicherte Position beim Wiederherstellen */
+  function placeCard(item, at, raw){
+    var c = { id: ++state.uid, libId: item.id, url: item.url, name: item.name, aspect: item.aspect, x: 0, y: 0, flipped: false };
+    build(c);
+    cardsLayer.appendChild(c.el);
+    layout(c);
+    if (raw){
+      c.x = raw.x; c.y = raw.y; c.flipped = !!raw.flipped;
+      c.el.classList.toggle('flipped', c.flipped);
+    } else {
+      var spot = findSpot(c.cw, c.h, at ? { x: at.x - c.cw / 2, y: at.y - c.h / 2 } : null);
+      c.x = spot.x; c.y = spot.y;
+    }
+    c.el.style.zIndex = ++state.z;
+    state.cards.push(c);
+    layout(c);
+    updateUi();
+    if (!raw){ reveal({ x: c.x, y: c.y, w: c.cw, h: c.h }); scheduleSave(); }
+    return c;
+  }
+
+  function placeOrFocus(item, at){
+    var existing = null;
+    state.cards.forEach(function(c){ if (c.libId === item.id) existing = c; });
+    if (existing){ focusCard(existing); return existing; }
+    return placeCard(item, at);
+  }
+
+  /* ---------- Ordner ---------- */
+  function renderLib(){
+    var q = filterEl.value.trim().toLowerCase();
+    var items = state.lib.filter(function(it){ return !q || it.name.toLowerCase().indexOf(q) >= 0; });
+    items.sort(function(a, b){ return a.name.localeCompare(b.name, 'de', { numeric: true, sensitivity: 'base' }); });
+    document.getElementById('count').textContent = state.lib.length ? '(' + state.lib.length + ')' : '';
+    libList.textContent = '';
+    if (!items.length){
+      var none = document.createElement('li');
+      none.className = 'none';
+      none.textContent = state.lib.length ? 'Kein Bild gefunden.' : 'Noch keine Bilder hochgeladen.';
+      libList.appendChild(none);
+      return;
+    }
+    var lastTap = { id: null, t: 0 };
+    items.forEach(function(it){
+      var li = document.createElement('li');
+      li.tabIndex = 0;
+      li.setAttribute('role', 'option');
+      li.dataset.id = it.id;
+      li.title = it.name + ' (Doppelklick: auf die Fläche legen)';
+      li.innerHTML = '<span class="dot" aria-hidden="true"></span><span class="nm"></span><button class="rm" type="button">Löschen</button>';
+      li.querySelector('.nm').textContent = it.name;
+      if (state.selected === it.id) li.classList.add('sel');
+
+      li.addEventListener('click', function(){
+        state.selected = it.id;
+        libList.querySelectorAll('li.sel').forEach(function(x){ x.classList.remove('sel'); });
+        li.classList.add('sel');
+      });
+      li.addEventListener('dblclick', function(){ placeOrFocus(it); });
+      li.addEventListener('pointerup', function(e){
+        if (e.pointerType !== 'touch') return;
+        var now = Date.now();
+        if (lastTap.id === it.id && now - lastTap.t < 450){ lastTap = { id: null, t: 0 }; placeOrFocus(it); }
+        else lastTap = { id: it.id, t: now };
+      });
+      li.addEventListener('keydown', function(e){
+        if (e.target !== li) return;
+        if (e.key === 'Enter'){ e.preventDefault(); placeOrFocus(it); }
+        else if (e.key === 'ArrowDown' && li.nextElementSibling){ e.preventDefault(); li.nextElementSibling.focus(); }
+        else if (e.key === 'ArrowUp' && li.previousElementSibling){ e.preventDefault(); li.previousElementSibling.focus(); }
+      });
+
+      /* Löschen braucht zwei Klicks, damit nichts versehentlich verschwindet */
+      var rm = li.querySelector('.rm'), armTimer = null;
+      rm.addEventListener('click', function(e){
+        e.stopPropagation();
+        if (!rm.classList.contains('armed')){
+          rm.classList.add('armed'); rm.textContent = 'Wirklich?';
+          armTimer = setTimeout(function(){ rm.classList.remove('armed'); rm.textContent = 'Löschen'; }, 3000);
+          return;
+        }
+        clearTimeout(armTimer);
+        removeLibItem(it);
+      });
+      libList.appendChild(li);
+    });
+    markLib();
+  }
+
+  function markLib(){
+    var onBoard = {};
+    state.cards.forEach(function(c){ onBoard[c.libId] = true; });
+    libList.querySelectorAll('li[data-id]').forEach(function(li){ li.classList.toggle('onboard', !!onBoard[li.dataset.id]); });
+  }
+
+  function removeLibItem(it){
+    var i = state.lib.indexOf(it);
+    if (i >= 0) state.lib.splice(i, 1);
+    if (state.selected === it.id) state.selected = null;
+    dbDelete(it.id);
+    renderLib();
+  }
+
+  function setStoreNote(){
+    document.getElementById('store').textContent = state.persist
+      ? 'Bilder und Anordnung bleiben in diesem Browser gespeichert.'
+      : 'Speichern ist hier nicht möglich. Die Bilder bleiben nur bis zum Schließen der Seite.';
+  }
+
+  /* ---------- Bilder laden ---------- */
+  function readImage(file){
+    return new Promise(function(resolve, reject){
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function(){ resolve({ url: url, aspect: (img.naturalWidth / Math.max(1, img.naturalHeight)) || 1.5 }); };
+      img.onerror = function(){
+        URL.revokeObjectURL(url);
+        /* Ersatzweg: Datei als data:-URL einlesen */
+        if (!window.FileReader){ reject(new Error('decode')); return; }
+        var fr = new FileReader();
+        fr.onload = function(){
+          var i2 = new Image();
+          i2.onload = function(){ resolve({ url: fr.result, aspect: (i2.naturalWidth / Math.max(1, i2.naturalHeight)) || 1.5 }); };
+          i2.onerror = function(){ reject(new Error('decode')); };
+          i2.src = fr.result;
+        };
+        fr.onerror = function(){ reject(new Error('read')); };
+        fr.readAsDataURL(file);
+      };
+      img.src = url;
+    });
+  }
+
+  function uniqueName(base){
+    var name = base, n = 2;
+    var taken = function(x){ return state.lib.some(function(it){ return it.name === x; }); };
+    while (taken(name)) name = base + ' (' + (n++) + ')';
+    return name;
+  }
+
+  /* Datei in den Ordner aufnehmen (falls neu) und auf die Fläche legen */
+  function addFile(file, at){
+    var key = file.name + '|' + file.size + '|' + file.lastModified;
+    var existing = null;
+    state.lib.forEach(function(it){ if (it.key === key) existing = it; });
+    if (existing){ placeOrFocus(existing, at); return Promise.resolve(); }
+    return readImage(file).then(function(img){
+      var item = { id: newId(), key: key, name: uniqueName(stripExt(file.name)), url: img.url, aspect: img.aspect, added: Date.now() };
+      state.lib.push(item);
+      renderLib();
+      placeCard(item, at);
+      return dbPut({ id: item.id, key: key, name: item.name, aspect: item.aspect, added: item.added, file: file }).then(function(ok){
+        if (db && !ok) toast('„' + item.name + '“ konnte nicht dauerhaft gespeichert werden. Es bleibt bis zum Schließen der Seite im Ordner.');
+      });
+    }).catch(function(){
+      toast('„' + file.name + '“ konnte nicht als Bild geöffnet werden. Speichere es als JPG oder PNG (HEIC wird nicht von jedem Browser gelesen) und versuche es erneut.');
+    });
+  }
+
+  function addFiles(files, at){
+    var chain = Promise.resolve();
+    Array.prototype.forEach.call(files, function(f, i){
+      var pt = at ? { x: at.x + i * 24, y: at.y + i * 20 } : null;
+      chain = chain.then(function(){ return addFile(f, pt); });
+    });
+  }
+
+  /* ---------- Bedienelemente ---------- */
+  document.getElementById('addBtn').addEventListener('keydown', function(e){
+    if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); fileInput.click(); }
+  });
+  fileInput.addEventListener('change', function(){ addFiles(fileInput.files); fileInput.value = ''; });
+  document.getElementById('frameBtn').addEventListener('click', function(){ addFrame({}); });
+
+  /* Fläche leeren braucht zwei Klicks, weil Kästen und Anordnung verloren gehen */
+  var clearTimer = null;
+  clearBtn.addEventListener('click', function(){
+    if (!clearBtn.classList.contains('warn')){
+      clearBtn.classList.add('warn'); clearBtn.textContent = 'Wirklich leeren?';
+      clearTimer = setTimeout(function(){ clearBtn.classList.remove('warn'); clearBtn.textContent = 'Fläche leeren'; }, 3000);
+      return;
+    }
+    clearTimeout(clearTimer);
+    clearBtn.classList.remove('warn'); clearBtn.textContent = 'Fläche leeren';
+    state.cards.slice().forEach(function(c){ c.el.remove(); });
+    state.frames.slice().forEach(function(f){ f.el.remove(); f.ctl.remove(); });
+    state.cards = []; state.frames = []; state.zoomed = null;
+    setView({ x: 0, y: 0, z: 1 }, true);
+    updateUi(); scheduleSave();
+  });
+
+  flipAllBtn.addEventListener('click', function(){
+    var toBack = state.cards.some(function(c){ return !c.flipped; });
+    state.cards.forEach(function(c, i){
+      setTimeout(function(){ flipCard(c, toBack); }, reduced ? 0 : i * 140);
+    });
+  });
+
+  document.getElementById('size').addEventListener('input', function(e){
+    state.size = +e.target.value; state.cards.forEach(layout); state.frames.forEach(growToMembers); saveSettings(); scheduleSave();
+  });
+  document.getElementById('front').addEventListener('change', function(e){
+    state.front = e.target.value;
+    state.cards.forEach(function(c){ c.flipped = false; c.el.classList.remove('flipped'); });
+    applyFront(); updateUi(); saveSettings(); scheduleSave();
+  });
+  filterEl.addEventListener('input', renderLib);
+
+  function setLibOpen(open){
+    libEl.hidden = !open;
+    libBtn.setAttribute('aria-pressed', open ? 'true' : 'false');
+  }
+  libBtn.addEventListener('click', function(){ setLibOpen(libEl.hidden); });
+
+  /* Ablegen und Einfügen */
+  board.addEventListener('dragover', function(e){ e.preventDefault(); board.classList.add('over'); });
+  board.addEventListener('dragleave', function(e){ if (e.target === board) board.classList.remove('over'); });
+  board.addEventListener('drop', function(e){
+    e.preventDefault();
+    board.classList.remove('over');
+    if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files, screenToWorld(e.clientX, e.clientY));
+  });
+  window.addEventListener('paste', function(e){
+    if (e.target && (/^(INPUT|TEXTAREA)$/.test(e.target.tagName) || e.target.isContentEditable)) return;
+    var files = e.clipboardData && e.clipboardData.files;
+    if (files && files.length) addFiles(files);
+  });
+
+  /* ---------- Start ---------- */
+  loadSettings();
+  setLibOpen(window.innerWidth > 760);
+  applyView();
+  updateUi();
+  renderLib();
+
+  openDb().then(function(d){
+    db = d;
+    state.persist = !!d;
+    setStoreNote();
+    return dbAll();
+  }).then(function(rows){
+    rows.forEach(function(r){
+      if (!r || !r.file) return;
+      /* Beispielbild aus früheren Versionen entfernen */
+      if (typeof r.key === 'string' && r.key.indexOf('Beispiel Apfel.svg|') === 0){ dbDelete(r.id); return; }
+      var url;
+      try { url = URL.createObjectURL(r.file); } catch (e) { return; }
+      state.lib.push({ id: r.id, key: r.key, name: r.name, url: url, aspect: r.aspect || 1.5, added: r.added || 0 });
+    });
+    renderLib();
+
+    /* gespeicherte Anordnung wiederherstellen */
+    var L = loadLayout();
+    if (L){
+      (L.frames || []).forEach(function(f){ addFrame(f, true); });
+      (L.cards || []).forEach(function(r){
+        var it = null;
+        state.lib.forEach(function(x){ if (x.id === r.libId) it = x; });
+        if (it) placeCard(it, null, { x: r.x, y: r.y, flipped: r.flipped });
+      });
+      if (L.view && isFinite(L.view.x) && isFinite(L.view.y) && isFinite(L.view.z)) setView(L.view, false);
+    }
+    state.ready = true;
+  });
+})();
+</script>
+<script>
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+}
+</script>
+</body>
+</html>
